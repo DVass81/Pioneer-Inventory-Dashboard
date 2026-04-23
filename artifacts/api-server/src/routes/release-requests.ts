@@ -105,11 +105,7 @@ router.post("/release-requests", async (req, res): Promise<void> => {
     })
     .returning();
 
-  await db
-    .update(inventoryItemsTable)
-    .set({ currentStock: item.currentStock - quantity })
-    .where(eq(inventoryItemsTable.id, inventoryItemId));
-
+  // Inventory is NOT deducted on submission — it deducts only when marked Completed
   await sendReleaseRequestEmail({
     requestedBy,
     requestedByEmail,
@@ -118,45 +114,68 @@ router.post("/release-requests", async (req, res): Promise<void> => {
     unit: item.unit,
     notes: notes ?? null,
     requestId: releaseRequest.id,
-    currentStockAfter: item.currentStock - quantity,
+    currentStockAfter: item.currentStock,
   });
 
-  const [updatedItem] = await db
-    .select()
-    .from(inventoryItemsTable)
-    .where(eq(inventoryItemsTable.id, inventoryItemId));
-
-  res.status(201).json(GetReleaseRequestResponse.parse(buildReleaseRequestResponse(releaseRequest, updatedItem)));
+  res.status(201).json(GetReleaseRequestResponse.parse(buildReleaseRequestResponse(releaseRequest, item)));
 });
 
 router.patch("/release-requests/:id/status", async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
-  const { status } = req.body;
+  const { status: newStatus } = req.body;
 
   const validStatuses = ["pending", "approved", "completed", "rejected"];
-  if (!status || !validStatuses.includes(status)) {
+  if (!newStatus || !validStatuses.includes(newStatus)) {
     res.status(400).json({ error: `Status must be one of: ${validStatuses.join(", ")}` });
     return;
   }
 
-  const [updated] = await db
-    .update(releaseRequestsTable)
-    .set({ status, updatedAt: new Date() })
-    .where(eq(releaseRequestsTable.id, id))
-    .returning();
-
-  if (!updated) {
-    res.status(404).json({ error: "Release request not found" });
-    return;
-  }
-
+  // Load existing request + item
   const rows = await db
     .select()
     .from(releaseRequestsTable)
     .leftJoin(inventoryItemsTable, eq(releaseRequestsTable.inventoryItemId, inventoryItemsTable.id))
     .where(eq(releaseRequestsTable.id, id));
 
-  const row = rows[0];
+  if (!rows.length || !rows[0].inventory_items) {
+    res.status(404).json({ error: "Release request not found" });
+    return;
+  }
+
+  const request = rows[0].release_requests;
+  const item = rows[0].inventory_items;
+  const oldStatus = request.status;
+
+  // Deduct inventory when completing; restore if moving away from completed
+  if (newStatus === "completed" && oldStatus !== "completed") {
+    if (item.currentStock < request.quantity) {
+      res.status(400).json({ error: `Insufficient stock to complete. Only ${item.currentStock} ${item.unit} available.` });
+      return;
+    }
+    await db
+      .update(inventoryItemsTable)
+      .set({ currentStock: item.currentStock - request.quantity, updatedAt: new Date() })
+      .where(eq(inventoryItemsTable.id, item.id));
+  } else if (oldStatus === "completed" && newStatus !== "completed") {
+    // Restore inventory if undoing a completion
+    await db
+      .update(inventoryItemsTable)
+      .set({ currentStock: item.currentStock + request.quantity, updatedAt: new Date() })
+      .where(eq(inventoryItemsTable.id, item.id));
+  }
+
+  await db
+    .update(releaseRequestsTable)
+    .set({ status: newStatus, updatedAt: new Date() })
+    .where(eq(releaseRequestsTable.id, id));
+
+  const updatedRows = await db
+    .select()
+    .from(releaseRequestsTable)
+    .leftJoin(inventoryItemsTable, eq(releaseRequestsTable.inventoryItemId, inventoryItemsTable.id))
+    .where(eq(releaseRequestsTable.id, id));
+
+  const row = updatedRows[0];
   res.json(buildReleaseRequestResponse(row.release_requests, row.inventory_items!));
 });
 
