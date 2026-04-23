@@ -72,8 +72,20 @@ export function Sidebar({ className }: SidebarProps) {
         </div>
       </div>
       
-      <div className="p-4 border-t border-sidebar-border text-xs text-sidebar-foreground/60 text-center">
-        ICC International
+      <div className="p-4 border-t border-sidebar-border text-xs text-sidebar-foreground/60 text-center space-y-1">
+        <div className="font-medium text-sidebar-foreground/80">ICC International</div>
+        <div>Maryville, TN</div>
+        <div className="pt-1 border-t border-sidebar-border/50">
+          <div className="text-sidebar-foreground/60">Stored at Pioneer Industrial Sales</div>
+          <a
+            href="https://www.pioneerindustrialsales.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sidebar-foreground/50 hover:text-sidebar-foreground/80 transition-colors"
+          >
+            www.pioneerindustrialsales.com
+          </a>
+        </div>
       </div>
     </div>
   );
