@@ -1,4 +1,4 @@
-import { useListReleaseRequests, ListReleaseRequestsStatus } from "@workspace/api-client-react";
+import { useListReleaseRequests, ListReleaseRequestsStatus, useUpdateRequestStatus } from "@workspace/api-client-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatCategory, formatDate } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -6,16 +6,66 @@ import { Link } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { PlusCircle, Search, Filter } from "lucide-react";
+import { PlusCircle, Search, Filter, CheckCircle, XCircle, PackageCheck, RotateCcw } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useState, useMemo } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useToast } from "@/hooks/use-toast";
+
+function StatusActions({ id, status }: { id: number; status: string }) {
+  const update = useUpdateRequestStatus();
+  const { toast } = useToast();
+
+  const handle = (newStatus: string) => {
+    update.mutate({ id, status: newStatus as any }, {
+      onSuccess: () => toast({ title: `Request marked as ${newStatus}` }),
+      onError: () => toast({ title: "Failed to update status", variant: "destructive" }),
+    });
+  };
+
+  const isPending = update.isPending;
+
+  if (status === "pending") {
+    return (
+      <div className="flex items-center gap-1">
+        <Button size="sm" variant="outline" className="h-7 text-xs gap-1 text-green-700 border-green-300 hover:bg-green-50" disabled={isPending} onClick={() => handle("approved")}>
+          <CheckCircle className="h-3 w-3" /> Approve
+        </Button>
+        <Button size="sm" variant="outline" className="h-7 text-xs gap-1 text-red-700 border-red-300 hover:bg-red-50" disabled={isPending} onClick={() => handle("rejected")}>
+          <XCircle className="h-3 w-3" /> Reject
+        </Button>
+      </div>
+    );
+  }
+
+  if (status === "approved") {
+    return (
+      <div className="flex items-center gap-1">
+        <Button size="sm" variant="outline" className="h-7 text-xs gap-1 text-blue-700 border-blue-300 hover:bg-blue-50" disabled={isPending} onClick={() => handle("completed")}>
+          <PackageCheck className="h-3 w-3" /> Complete
+        </Button>
+        <Button size="sm" variant="ghost" className="h-7 text-xs gap-1 text-muted-foreground" disabled={isPending} onClick={() => handle("pending")}>
+          <RotateCcw className="h-3 w-3" /> Undo
+        </Button>
+      </div>
+    );
+  }
+
+  if (status === "rejected") {
+    return (
+      <Button size="sm" variant="ghost" className="h-7 text-xs gap-1 text-muted-foreground" disabled={isPending} onClick={() => handle("pending")}>
+        <RotateCcw className="h-3 w-3" /> Reopen
+      </Button>
+    );
+  }
+
+  return null;
+}
 
 export default function RequestsList() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
-  
-  // Use undefined for "all" to fetch everything
+
   const { data: requests, isLoading } = useListReleaseRequests(
     statusFilter !== "all" ? { status: statusFilter as ListReleaseRequestsStatus } : undefined
   );
@@ -23,9 +73,8 @@ export default function RequestsList() {
   const filteredRequests = useMemo(() => {
     if (!requests) return [];
     if (!search.trim()) return requests;
-    
     const query = search.toLowerCase();
-    return requests.filter(req => 
+    return requests.filter(req =>
       req.requestedBy.toLowerCase().includes(query) ||
       (req.inventoryItem?.product && req.inventoryItem.product.toLowerCase().includes(query)) ||
       (req.notes && req.notes.toLowerCase().includes(query))
@@ -53,7 +102,6 @@ export default function RequestsList() {
               <CardTitle>All Requests</CardTitle>
               <CardDescription>History of all material release requests.</CardDescription>
             </div>
-            
             <div className="flex flex-col sm:flex-row gap-3">
               <div className="relative w-full sm:w-64">
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -94,6 +142,7 @@ export default function RequestsList() {
                   <TableHead>Item</TableHead>
                   <TableHead className="text-right">Quantity</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -105,6 +154,7 @@ export default function RequestsList() {
                       <TableCell><Skeleton className="h-5 w-48" /></TableCell>
                       <TableCell><Skeleton className="h-5 w-16 ml-auto" /></TableCell>
                       <TableCell><Skeleton className="h-5 w-20" /></TableCell>
+                      <TableCell><Skeleton className="h-5 w-28" /></TableCell>
                     </TableRow>
                   ))
                 ) : filteredRequests.length > 0 ? (
@@ -136,7 +186,7 @@ export default function RequestsList() {
                         <span className="text-xs text-muted-foreground ml-1">{req.inventoryItem?.unit || 'units'}</span>
                       </TableCell>
                       <TableCell>
-                        <Badge 
+                        <Badge
                           variant={
                             req.status === 'pending' ? 'secondary' :
                             req.status === 'approved' ? 'default' :
@@ -148,11 +198,14 @@ export default function RequestsList() {
                           {req.status}
                         </Badge>
                       </TableCell>
+                      <TableCell>
+                        <StatusActions id={req.id} status={req.status} />
+                      </TableCell>
                     </TableRow>
                   ))
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={5} className="h-32 text-center text-muted-foreground">
+                    <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
                       No release requests found matching your filters.
                     </TableCell>
                   </TableRow>

@@ -129,6 +129,37 @@ router.post("/release-requests", async (req, res): Promise<void> => {
   res.status(201).json(GetReleaseRequestResponse.parse(buildReleaseRequestResponse(releaseRequest, updatedItem)));
 });
 
+router.patch("/release-requests/:id/status", async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id, 10);
+  const { status } = req.body;
+
+  const validStatuses = ["pending", "approved", "completed", "rejected"];
+  if (!status || !validStatuses.includes(status)) {
+    res.status(400).json({ error: `Status must be one of: ${validStatuses.join(", ")}` });
+    return;
+  }
+
+  const [updated] = await db
+    .update(releaseRequestsTable)
+    .set({ status, updatedAt: new Date() })
+    .where(eq(releaseRequestsTable.id, id))
+    .returning();
+
+  if (!updated) {
+    res.status(404).json({ error: "Release request not found" });
+    return;
+  }
+
+  const rows = await db
+    .select()
+    .from(releaseRequestsTable)
+    .leftJoin(inventoryItemsTable, eq(releaseRequestsTable.inventoryItemId, inventoryItemsTable.id))
+    .where(eq(releaseRequestsTable.id, id));
+
+  const row = rows[0];
+  res.json(buildReleaseRequestResponse(row.release_requests, row.inventory_items!));
+});
+
 router.get("/release-requests/:id", async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const params = GetReleaseRequestParams.safeParse({ id: parseInt(raw, 10) });
