@@ -3,20 +3,23 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Pioneer Inventory Dashboard API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: inventory
+    description: Inventory management
+  - name: release-requests
+    description: Release request operations
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +27,156 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /inventory:
+    get:
+      operationId: listInventory
+      tags: [inventory]
+      summary: List all inventory items
+      responses:
+        "200":
+          description: List of inventory items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/InventoryItem"
+
+  /inventory/{id}:
+    get:
+      operationId: getInventoryItem
+      tags: [inventory]
+      summary: Get a single inventory item
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Inventory item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryItem"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /inventory/summary:
+    get:
+      operationId: getInventorySummary
+      tags: [inventory]
+      summary: Get inventory summary stats
+      responses:
+        "200":
+          description: Summary stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventorySummary"
+
+  /release-requests:
+    get:
+      operationId: listReleaseRequests
+      tags: [release-requests]
+      summary: List all release requests
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [pending, approved, completed, rejected]
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of release requests
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ReleaseRequest"
+    post:
+      operationId: createReleaseRequest
+      tags: [release-requests]
+      summary: Create a new release request (sends email and deducts inventory)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateReleaseRequest"
+      responses:
+        "201":
+          description: Release request created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReleaseRequest"
+        "400":
+          description: Bad request or insufficient inventory
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /release-requests/{id}:
+    get:
+      operationId: getReleaseRequest
+      tags: [release-requests]
+      summary: Get a single release request
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Release request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReleaseRequest"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /release-requests/recent:
+    get:
+      operationId: getRecentReleaseRequests
+      tags: [release-requests]
+      summary: Get the most recent release requests (activity feed)
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Recent release requests
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ReleaseRequest"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +187,147 @@ components:
       required:
         - status
 
+    InventoryItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        category:
+          type: string
+          description: "Product category: segment_mica, molding_mica, pei_tape, cold_banding_tape, brazing_wire"
+        product:
+          type: string
+        thickness:
+          type: string
+          nullable: true
+        sheetSize:
+          type: string
+          nullable: true
+        weightPerSheet:
+          type: number
+          nullable: true
+          description: "Weight per sheet in lbs (for mica products)"
+        currentStock:
+          type: integer
+          description: "Current stock in sheets (for mica) or units (for other items)"
+        unit:
+          type: string
+          description: "sheets, rolls, spools, etc."
+        lowStockThreshold:
+          type: integer
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - category
+        - product
+        - currentStock
+        - unit
+        - createdAt
+        - updatedAt
+
+    InventorySummary:
+      type: object
+      properties:
+        totalItems:
+          type: integer
+        lowStockCount:
+          type: integer
+        totalSheets:
+          type: integer
+        pendingRequests:
+          type: integer
+        recentRequestsCount:
+          type: integer
+        categoryBreakdown:
+          type: array
+          items:
+            type: object
+            properties:
+              category:
+                type: string
+              count:
+                type: integer
+              totalStock:
+                type: integer
+            required:
+              - category
+              - count
+              - totalStock
+      required:
+        - totalItems
+        - lowStockCount
+        - totalSheets
+        - pendingRequests
+        - recentRequestsCount
+        - categoryBreakdown
+
+    ReleaseRequest:
+      type: object
+      properties:
+        id:
+          type: integer
+        inventoryItemId:
+          type: integer
+        inventoryItem:
+          $ref: "#/components/schemas/InventoryItem"
+        requestedBy:
+          type: string
+        requestedByEmail:
+          type: string
+        quantity:
+          type: integer
+        notes:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [pending, approved, completed, rejected]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - inventoryItemId
+        - requestedBy
+        - requestedByEmail
+        - quantity
+        - status
+        - createdAt
+        - updatedAt
+
+    CreateReleaseRequest:
+      type: object
+      properties:
+        inventoryItemId:
+          type: integer
+        requestedBy:
+          type: string
+        requestedByEmail:
+          type: string
+        quantity:
+          type: integer
+        notes:
+          type: string
+          nullable: true
+      required:
+        - inventoryItemId
+        - requestedBy
+        - requestedByEmail
+        - quantity
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
