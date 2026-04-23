@@ -118,6 +118,7 @@ router.post("/release-requests", async (req, res): Promise<void> => {
     unit: item.unit,
     notes: notes ?? null,
     requestId: releaseRequest.id,
+    currentStockAfter: item.currentStock - quantity,
   });
 
   const [updatedItem] = await db

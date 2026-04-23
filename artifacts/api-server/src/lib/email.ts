@@ -1,6 +1,13 @@
 import nodemailer from "nodemailer";
 import { logger } from "./logger";
 
+const PIONEER_RECIPIENTS = [
+  "Taylor.vincent@pioneerindustrialsales.com",
+  "shane.parks@pioneerindustrialsales.com",
+  "paul.hester@pioneerindustrialsales.com",
+  "hank.pennington@pioneerindustrialsales.com",
+];
+
 function createTransporter() {
   const host = process.env.SMTP_HOST;
   const port = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : 587;
@@ -28,44 +35,58 @@ export async function sendReleaseRequestEmail(opts: {
   unit: string;
   notes?: string | null;
   requestId: number;
+  currentStockAfter: number;
 }): Promise<void> {
-  const { requestedBy, requestedByEmail, product, quantity, unit, notes, requestId } = opts;
-  const recipientEmail = process.env.RELEASE_REQUEST_EMAIL ?? process.env.SMTP_USER;
+  const { requestedBy, requestedByEmail, product, quantity, unit, notes, requestId, currentStockAfter } = opts;
 
-  const subject = `Inventory Release Request #${requestId} — ${product}`;
+  const subject = `[ICC International] Inventory Release Request #${requestId} — ${product}`;
   const body = `
-A new inventory release request has been submitted.
+ICC International — Pioneer Inventory Release Request
+======================================================
 
-Request ID: ${requestId}
-Product: ${product}
-Quantity Requested: ${quantity} ${unit}
-Requested By: ${requestedBy} <${requestedByEmail}>
-${notes ? `Notes: ${notes}` : ""}
+A new inventory release request has been submitted and the stock level has been updated.
 
-Please review and process this request.
+Request Details
+---------------
+Request ID:       #${requestId}
+Product:          ${product}
+Quantity:         ${quantity} ${unit}
+Remaining Stock:  ${currentStockAfter} ${unit}
+Requested By:     ${requestedBy}
+Requester Email:  ${requestedByEmail}
+${notes ? `Notes:            ${notes}` : ""}
+
+This request is now pending your approval and fulfillment.
+Please log in to the ICC International Inventory Dashboard to review and update the status.
+
+---
+Pioneer Industrial Sales
+www.pioneerindustrialsales.com
   `.trim();
 
-  logger.info({ requestId, product, quantity, requestedByEmail }, "Release request email triggered");
+  logger.info(
+    { requestId, product, quantity, requestedByEmail, recipients: PIONEER_RECIPIENTS },
+    "Release request email triggered"
+  );
 
   const transporter = createTransporter();
   if (!transporter) {
-    logger.info({ subject, body, to: recipientEmail }, "Email (not sent — SMTP not configured)");
-    return;
-  }
-
-  if (!recipientEmail) {
-    logger.warn("No recipient email configured (RELEASE_REQUEST_EMAIL or SMTP_USER)");
+    logger.info(
+      { subject, body, to: PIONEER_RECIPIENTS.join(", ") },
+      "Email (not sent — SMTP not configured)"
+    );
     return;
   }
 
   try {
     await transporter.sendMail({
-      from: process.env.SMTP_USER,
-      to: recipientEmail,
+      from: `ICC International Inventory <${process.env.SMTP_USER}>`,
+      to: PIONEER_RECIPIENTS.join(", "),
+      replyTo: requestedByEmail,
       subject,
       text: body,
     });
-    logger.info({ requestId, to: recipientEmail }, "Release request email sent");
+    logger.info({ requestId, recipients: PIONEER_RECIPIENTS }, "Release request email sent to Pioneer team");
   } catch (err) {
     logger.error({ err, requestId }, "Failed to send release request email");
   }
