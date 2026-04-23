@@ -1,29 +1,94 @@
 import { useGetInventoryItem, getGetInventoryItemQueryKey } from "@workspace/api-client-react";
+import { useAdjustStock, useUpdateThreshold, useStockMovements } from "@workspace/api-client-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatCategory, formatDate } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Link, useParams } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowLeft, AlertTriangle, Package, Scale, Ruler, History, Calendar } from "lucide-react";
+import { ArrowLeft, AlertTriangle, Package, Scale, Ruler, History, TrendingUp, TrendingDown, Edit2, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { useToast } from "@/hooks/use-toast";
+import { useState } from "react";
 
-// Mocking release requests for an item since we don't have a specific endpoint for it
-// In a real app, this would use an API hook like useListReleaseRequests({ inventoryItemId: id })
-// Using the generic list and filtering client-side for demonstration
-import { useListReleaseRequests } from "@workspace/api-client-react";
+function reasonLabel(reason: string) {
+  switch (reason) {
+    case "release_completed": return "Release completed";
+    case "release_undone": return "Release undone";
+    case "manual_receipt": return "Stock received";
+    case "manual_deduction": return "Manual deduction";
+    default: return reason;
+  }
+}
 
 export default function InventoryDetail() {
   const params = useParams();
   const id = parseInt(params.id || "0", 10);
-  
-  const { data: item, isLoading: isLoadingItem } = useGetInventoryItem(id, { 
-    query: { enabled: !!id, queryKey: getGetInventoryItemQueryKey(id) } 
+  const { toast } = useToast();
+
+  const { data: item, isLoading: isLoadingItem } = useGetInventoryItem(id, {
+    query: { enabled: !!id, queryKey: getGetInventoryItemQueryKey(id) }
   });
 
-  const { data: allRequests, isLoading: isLoadingRequests } = useListReleaseRequests();
-  
-  const itemRequests = allRequests?.filter(req => req.inventoryItemId === id)
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()) || [];
+  const { data: movements, isLoading: isLoadingMovements } = useStockMovements(id);
+
+  const adjustStock = useAdjustStock();
+  const updateThreshold = useUpdateThreshold();
+
+  // Adjust stock dialog state
+  const [adjustOpen, setAdjustOpen] = useState(false);
+  const [adjustAmount, setAdjustAmount] = useState("");
+  const [adjustNotes, setAdjustNotes] = useState("");
+  const [adjustMode, setAdjustMode] = useState<"add" | "remove">("add");
+
+  // Threshold edit state
+  const [editingThreshold, setEditingThreshold] = useState(false);
+  const [thresholdValue, setThresholdValue] = useState("");
+
+  function handleAdjustSubmit() {
+    const raw = parseInt(adjustAmount, 10);
+    if (isNaN(raw) || raw <= 0) {
+      toast({ title: "Enter a valid positive quantity", variant: "destructive" });
+      return;
+    }
+    const amount = adjustMode === "add" ? raw : -raw;
+    adjustStock.mutate({ id, amount, notes: adjustNotes || undefined }, {
+      onSuccess: () => {
+        toast({ title: `Stock ${adjustMode === "add" ? "added" : "removed"} successfully` });
+        setAdjustOpen(false);
+        setAdjustAmount("");
+        setAdjustNotes("");
+      },
+      onError: (err: any) => {
+        toast({ title: err?.message || "Failed to adjust stock", variant: "destructive" });
+      },
+    });
+  }
+
+  function startEditThreshold() {
+    setThresholdValue(item?.lowStockThreshold != null ? String(item.lowStockThreshold) : "");
+    setEditingThreshold(true);
+  }
+
+  function saveThreshold() {
+    const val = thresholdValue.trim() === "" ? null : parseInt(thresholdValue, 10);
+    if (val !== null && (isNaN(val) || val < 0)) {
+      toast({ title: "Enter a valid non-negative number", variant: "destructive" });
+      return;
+    }
+    updateThreshold.mutate({ id, threshold: val }, {
+      onSuccess: () => {
+        toast({ title: "Low stock threshold updated" });
+        setEditingThreshold(false);
+      },
+      onError: () => {
+        toast({ title: "Failed to update threshold", variant: "destructive" });
+      },
+    });
+  }
 
   if (isLoadingItem) {
     return (
@@ -68,12 +133,74 @@ export default function InventoryDetail() {
               </Badge>
             )}
           </div>
-          <p className="text-muted-foreground mt-1 flex items-center gap-2">
+          <div className="text-muted-foreground mt-1 flex items-center gap-2 text-sm">
             <Badge variant="outline">{formatCategory(item.category)}</Badge>
             <span>Added {formatDate(item.createdAt)}</span>
-          </p>
+          </div>
         </div>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
+          <Dialog open={adjustOpen} onOpenChange={setAdjustOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline">Adjust Stock</Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Adjust Stock — {item.product}</DialogTitle>
+                <DialogDescription>
+                  Record a shipment received or a manual correction. Current stock: <strong>{item.currentStock} {item.unit}</strong>.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-2">
+                <div className="flex gap-2">
+                  <Button
+                    variant={adjustMode === "add" ? "default" : "outline"}
+                    className="flex-1"
+                    onClick={() => setAdjustMode("add")}
+                  >
+                    <TrendingUp className="w-4 h-4 mr-2" /> Add Stock
+                  </Button>
+                  <Button
+                    variant={adjustMode === "remove" ? "destructive" : "outline"}
+                    className="flex-1"
+                    onClick={() => setAdjustMode("remove")}
+                  >
+                    <TrendingDown className="w-4 h-4 mr-2" /> Remove Stock
+                  </Button>
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="adjust-amount">Quantity ({item.unit})</Label>
+                  <Input
+                    id="adjust-amount"
+                    type="number"
+                    min="1"
+                    placeholder="e.g. 500"
+                    value={adjustAmount}
+                    onChange={(e) => setAdjustAmount(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="adjust-notes">Notes (optional)</Label>
+                  <Textarea
+                    id="adjust-notes"
+                    placeholder="e.g. Received from supplier on 4/23/2026"
+                    value={adjustNotes}
+                    onChange={(e) => setAdjustNotes(e.target.value)}
+                    rows={2}
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setAdjustOpen(false)}>Cancel</Button>
+                <Button
+                  variant={adjustMode === "add" ? "default" : "destructive"}
+                  onClick={handleAdjustSubmit}
+                  disabled={adjustStock.isPending}
+                >
+                  {adjustStock.isPending ? "Saving..." : adjustMode === "add" ? "Add Stock" : "Remove Stock"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
           <Link href={`/requests/new?itemId=${item.id}`}>
             <Button data-testid="btn-create-request">Create Request</Button>
           </Link>
@@ -98,18 +225,45 @@ export default function InventoryDetail() {
                   <span className="text-sm font-normal text-muted-foreground">{item.unit}</span>
                 </dd>
               </div>
-              
-              {item.lowStockThreshold !== null && (
-                <div className="sm:col-span-1">
-                  <dt className="text-sm font-medium text-muted-foreground flex items-center gap-2 mb-1">
-                    <AlertTriangle className="w-4 h-4" /> Low Stock Threshold
-                  </dt>
-                  <dd className="mt-1 text-xl font-medium text-foreground flex items-baseline gap-2">
-                    {item.lowStockThreshold}
-                    <span className="text-sm font-normal text-muted-foreground">{item.unit}</span>
-                  </dd>
-                </div>
-              )}
+
+              <div className="sm:col-span-1">
+                <dt className="text-sm font-medium text-muted-foreground flex items-center gap-2 mb-1">
+                  <AlertTriangle className="w-4 h-4" /> Low Stock Threshold
+                </dt>
+                <dd className="mt-1">
+                  {editingThreshold ? (
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="number"
+                        min="0"
+                        className="h-8 w-28"
+                        value={thresholdValue}
+                        onChange={(e) => setThresholdValue(e.target.value)}
+                        placeholder="None"
+                        autoFocus
+                      />
+                      <Button size="icon" variant="ghost" className="h-8 w-8 text-green-600" onClick={saveThreshold} disabled={updateThreshold.isPending}>
+                        <Check className="h-4 w-4" />
+                      </Button>
+                      <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground" onClick={() => setEditingThreshold(false)}>
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex items-baseline gap-2 group">
+                      <span className="text-xl font-medium text-foreground">
+                        {item.lowStockThreshold != null ? item.lowStockThreshold : <span className="text-muted-foreground text-sm">Not set</span>}
+                      </span>
+                      {item.lowStockThreshold != null && (
+                        <span className="text-sm font-normal text-muted-foreground">{item.unit}</span>
+                      )}
+                      <Button size="icon" variant="ghost" className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity" onClick={startEditThreshold}>
+                        <Edit2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  )}
+                </dd>
+              </div>
 
               <div className="sm:col-span-1">
                 <dt className="text-sm font-medium text-muted-foreground flex items-center gap-2 mb-1">
@@ -137,45 +291,42 @@ export default function InventoryDetail() {
         <Card className="shadow-sm flex flex-col h-full">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg">
-              <History className="w-5 h-5" /> Release History
+              <History className="w-5 h-5" /> Stock History
             </CardTitle>
-            <CardDescription>Past requests for this item</CardDescription>
+            <CardDescription>All movements for this item</CardDescription>
           </CardHeader>
           <CardContent className="flex-1 overflow-y-auto max-h-[400px]">
-            {isLoadingRequests ? (
-              <div className="space-y-4">
-                {[1, 2].map(i => <Skeleton key={i} className="h-16 w-full" />)}
+            {isLoadingMovements ? (
+              <div className="space-y-3">
+                {[1, 2, 3].map(i => <Skeleton key={i} className="h-14 w-full" />)}
               </div>
-            ) : itemRequests.length > 0 ? (
-              <div className="space-y-4 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-border before:to-transparent">
-                {itemRequests.map((req) => (
-                  <div key={req.id} className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
-                    <div className="flex items-center justify-center w-10 h-10 rounded-full border border-background bg-muted shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 shadow-sm z-10">
-                      <Calendar className="w-4 h-4 text-muted-foreground" />
-                    </div>
-                    <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] p-3 rounded border border-border bg-card shadow-sm">
-                      <div className="flex items-center justify-between mb-1">
-                        <div className="font-medium text-sm text-foreground">{req.requestedBy}</div>
-                        <Badge 
-                          variant={
-                            req.status === 'pending' ? 'secondary' :
-                            req.status === 'approved' ? 'default' :
-                            req.status === 'completed' ? 'outline' : 'destructive'
-                          }
-                          className="text-[10px] px-1 h-4 uppercase"
-                        >
-                          {req.status}
-                        </Badge>
+            ) : movements && movements.length > 0 ? (
+              <div className="space-y-2">
+                {movements.map((m) => {
+                  const isPositive = m.changeAmount > 0;
+                  return (
+                    <div key={m.id} className="flex items-start gap-3 p-3 rounded-md border border-border/40 bg-muted/20">
+                      <div className={`mt-0.5 rounded-full p-1 ${isPositive ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                        {isPositive ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
                       </div>
-                      <div className="text-sm font-semibold text-primary">-{req.quantity} {item.unit}</div>
-                      <div className="text-xs text-muted-foreground mt-1">{formatDate(req.createdAt)}</div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className={`font-semibold text-sm ${isPositive ? "text-green-700" : "text-red-700"}`}>
+                            {isPositive ? "+" : ""}{m.changeAmount}
+                          </span>
+                          <span className="text-xs text-muted-foreground">{m.stockAfter} after</span>
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-0.5">{reasonLabel(m.reason)}</div>
+                        {m.notes && <div className="text-xs text-muted-foreground truncate mt-0.5">{m.notes}</div>}
+                        <div className="text-[10px] text-muted-foreground/70 mt-1">{formatDate(m.createdAt)}</div>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <div className="h-32 flex items-center justify-center text-muted-foreground text-sm border border-dashed rounded-md bg-muted/20">
-                No history found
+                No stock movements yet
               </div>
             )}
           </CardContent>

@@ -16,6 +16,18 @@ export const inventoryItemsTable = pgTable("inventory_items", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
 
+export const stockMovementsTable = pgTable("stock_movements", {
+  id: serial("id").primaryKey(),
+  inventoryItemId: integer("inventory_item_id").notNull().references(() => inventoryItemsTable.id),
+  changeAmount: integer("change_amount").notNull(),
+  stockAfter: integer("stock_after").notNull(),
+  reason: text("reason").notNull(),
+  releaseRequestId: integer("release_request_id"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const insertInventoryItemSchema = createInsertSchema(inventoryItemsTable).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertInventoryItem = z.infer<typeof insertInventoryItemSchema>;
 export type InventoryItem = typeof inventoryItemsTable.$inferSelect;
+export type StockMovement = typeof stockMovementsTable.$inferSelect;

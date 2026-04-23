@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq, desc } from "drizzle-orm";
-import { db, inventoryItemsTable, releaseRequestsTable } from "@workspace/db";
+import { db, inventoryItemsTable, releaseRequestsTable, stockMovementsTable } from "@workspace/db";
 import {
   CreateReleaseRequestBody,
   GetReleaseRequestParams,
@@ -152,16 +152,33 @@ router.patch("/release-requests/:id/status", async (req, res): Promise<void> => 
       res.status(400).json({ error: `Insufficient stock to complete. Only ${item.currentStock} ${item.unit} available.` });
       return;
     }
+    const newStock = item.currentStock - request.quantity;
     await db
       .update(inventoryItemsTable)
-      .set({ currentStock: item.currentStock - request.quantity, updatedAt: new Date() })
+      .set({ currentStock: newStock, updatedAt: new Date() })
       .where(eq(inventoryItemsTable.id, item.id));
+    await db.insert(stockMovementsTable).values({
+      inventoryItemId: item.id,
+      changeAmount: -request.quantity,
+      stockAfter: newStock,
+      reason: "release_completed",
+      releaseRequestId: request.id,
+      notes: `Release request #${request.id} completed by ${request.requestedBy}`,
+    });
   } else if (oldStatus === "completed" && newStatus !== "completed") {
-    // Restore inventory if undoing a completion
+    const newStock = item.currentStock + request.quantity;
     await db
       .update(inventoryItemsTable)
-      .set({ currentStock: item.currentStock + request.quantity, updatedAt: new Date() })
+      .set({ currentStock: newStock, updatedAt: new Date() })
       .where(eq(inventoryItemsTable.id, item.id));
+    await db.insert(stockMovementsTable).values({
+      inventoryItemId: item.id,
+      changeAmount: request.quantity,
+      stockAfter: newStock,
+      reason: "release_undone",
+      releaseRequestId: request.id,
+      notes: `Release request #${request.id} marked incomplete — stock restored`,
+    });
   }
 
   await db

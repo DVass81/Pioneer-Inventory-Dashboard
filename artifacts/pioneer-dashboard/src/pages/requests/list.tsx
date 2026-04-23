@@ -6,7 +6,7 @@ import { Link } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { PlusCircle, Search, Filter, CheckCircle, XCircle, PackageCheck, RotateCcw } from "lucide-react";
+import { PlusCircle, Search, Filter, CheckCircle, XCircle, PackageCheck, RotateCcw, ArrowRight } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useState, useMemo } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -143,6 +143,7 @@ export default function RequestsList() {
                   <TableHead className="text-right">Quantity</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Actions</TableHead>
+                  <TableHead className="w-[48px]"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -201,11 +202,18 @@ export default function RequestsList() {
                       <TableCell>
                         <StatusActions id={req.id} status={req.status} />
                       </TableCell>
+                      <TableCell>
+                        <Link href={`/requests/${req.id}`}>
+                          <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-primary">
+                            <ArrowRight className="h-4 w-4" />
+                          </Button>
+                        </Link>
+                      </TableCell>
                     </TableRow>
                   ))
                 ) : (
                   <TableRow>
-                    <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
+                    <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">
                       No release requests found matching your filters.
                     </TableCell>
                   </TableRow>

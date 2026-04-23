@@ -7,8 +7,17 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Link } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useState, useMemo } from "react";
-import { Search, AlertTriangle, ArrowRight } from "lucide-react";
+import { Search, AlertTriangle, ArrowRight, Download, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
+
+function handleExport() {
+  const base = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
+  window.open(`${base}/api/inventory/export`, "_blank");
+}
+
+function handlePrint() {
+  window.print();
+}
 
 export default function InventoryList() {
   const { data: inventory, isLoading } = useListInventory();
@@ -17,9 +26,9 @@ export default function InventoryList() {
   const filteredInventory = useMemo(() => {
     if (!inventory) return [];
     if (!search.trim()) return inventory;
-    
+
     const query = search.toLowerCase();
-    return inventory.filter(item => 
+    return inventory.filter(item =>
       item.product.toLowerCase().includes(query) ||
       formatCategory(item.category).toLowerCase().includes(query) ||
       (item.sheetSize && item.sheetSize.toLowerCase().includes(query)) ||
@@ -29,13 +38,23 @@ export default function InventoryList() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight text-foreground" data-testid="inventory-title">Inventory Master List</h1>
-        <p className="text-muted-foreground mt-1">Complete listing of all materials stored at Pioneer.</p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground" data-testid="inventory-title">Inventory Master List</h1>
+          <p className="text-muted-foreground mt-1">Complete listing of all materials stored at Pioneer.</p>
+        </div>
+        <div className="flex items-center gap-2 print:hidden">
+          <Button variant="outline" size="sm" className="flex items-center gap-2" onClick={handlePrint}>
+            <Printer className="w-4 h-4" /> Print
+          </Button>
+          <Button variant="outline" size="sm" className="flex items-center gap-2" onClick={handleExport} data-testid="btn-export-csv">
+            <Download className="w-4 h-4" /> Export CSV
+          </Button>
+        </div>
       </div>
 
       <Card className="shadow-sm">
-        <CardHeader className="pb-4">
+        <CardHeader className="pb-4 print:hidden">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <CardTitle>Products</CardTitle>
@@ -54,6 +73,13 @@ export default function InventoryList() {
             </div>
           </div>
         </CardHeader>
+
+        {/* Print-only header */}
+        <div className="hidden print:block px-6 pt-4 pb-2">
+          <div className="text-lg font-bold">ICC International — Pioneer Inventory</div>
+          <div className="text-sm text-muted-foreground">Printed {new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}</div>
+        </div>
+
         <CardContent>
           <div className="rounded-md border">
             <Table>
@@ -64,7 +90,7 @@ export default function InventoryList() {
                   <TableHead>Dimensions</TableHead>
                   <TableHead className="text-right">Weight/Sheet</TableHead>
                   <TableHead className="text-right">Current Stock</TableHead>
-                  <TableHead className="w-[80px]"></TableHead>
+                  <TableHead className="w-[80px] print:hidden"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -82,11 +108,11 @@ export default function InventoryList() {
                 ) : filteredInventory.length > 0 ? (
                   filteredInventory.map((item) => {
                     const isLowStock = item.lowStockThreshold !== null && item.currentStock <= item.lowStockThreshold;
-                    
+
                     return (
                       <TableRow key={item.id} className="hover:bg-muted/30">
                         <TableCell className="font-medium">
-                          <Link href={`/inventory/${item.id}`} className="hover:underline text-primary flex items-center gap-2" data-testid={`link-product-${item.id}`}>
+                          <Link href={`/inventory/${item.id}`} className="hover:underline text-primary flex items-center gap-2 print:text-foreground print:no-underline" data-testid={`link-product-${item.id}`}>
                             {item.product}
                             {isLowStock && (
                               <AlertTriangle className="w-3 h-3 text-destructive" aria-label="Low stock" />
@@ -117,7 +143,7 @@ export default function InventoryList() {
                             <span className="text-xs text-muted-foreground w-12 text-left">{item.unit}</span>
                           </div>
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="print:hidden">
                           <Link href={`/inventory/${item.id}`}>
                             <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-primary">
                               <ArrowRight className="h-4 w-4" />

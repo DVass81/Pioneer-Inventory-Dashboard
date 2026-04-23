@@ -6,10 +6,19 @@ import { formatCategory, formatDate } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
+
+const CATEGORY_COLORS = [
+  "#2d6a4f", "#40916c", "#52b788", "#74c69d", "#95d5b2", "#b7e4c7",
+];
 
 export default function Dashboard() {
   const { data: summary, isLoading: isLoadingSummary } = useGetInventorySummary();
   const { data: recentRequests, isLoading: isLoadingRequests } = useGetRecentReleaseRequests({ limit: 5 });
+
+  const chartData = summary?.categoryBreakdown
+    ?.map((cat) => ({ name: formatCategory(cat.category), stock: cat.totalStock }))
+    .sort((a, b) => b.stock - a.stock) ?? [];
 
   return (
     <div className="space-y-6">
@@ -38,7 +47,7 @@ export default function Dashboard() {
             )}
           </CardContent>
         </Card>
-        
+
         <Card className="shadow-sm border-destructive/20">
           <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
             <CardTitle className="text-sm font-medium text-muted-foreground">Low Stock Alerts</CardTitle>
@@ -82,33 +91,32 @@ export default function Dashboard() {
         </Card>
       </div>
 
+      {/* Chart + Recent Requests */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Category Breakdown */}
         <Card className="lg:col-span-2 shadow-sm flex flex-col">
           <CardHeader>
-            <CardTitle>Inventory Breakdown</CardTitle>
-            <CardDescription>Items and stock levels by category</CardDescription>
+            <CardTitle>Stock by Category</CardTitle>
+            <CardDescription>Current total units on hand per product category</CardDescription>
           </CardHeader>
           <CardContent className="flex-1">
             {isLoadingSummary ? (
-              <div className="space-y-4">
-                {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-12 w-full" />)}
-              </div>
-            ) : summary?.categoryBreakdown && summary.categoryBreakdown.length > 0 ? (
-              <div className="space-y-4">
-                {summary.categoryBreakdown.map((cat) => (
-                  <div key={cat.category} className="flex items-center justify-between p-4 bg-muted/30 rounded-lg border border-border/50">
-                    <div className="flex flex-col">
-                      <span className="font-medium text-foreground">{formatCategory(cat.category)}</span>
-                      <span className="text-sm text-muted-foreground">{cat.count} unique products</span>
-                    </div>
-                    <div className="text-right">
-                      <div className="font-bold text-foreground">{cat.totalStock}</div>
-                      <div className="text-xs text-muted-foreground">total stock</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <Skeleton className="h-48 w-full" />
+            ) : chartData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
+                  <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+                  <YAxis tick={{ fontSize: 12 }} width={50} />
+                  <Tooltip
+                    formatter={(value: number) => [value.toLocaleString(), "Units"]}
+                    contentStyle={{ fontSize: 12, borderRadius: 6 }}
+                  />
+                  <Bar dataKey="stock" radius={[4, 4, 0, 0]}>
+                    {chartData.map((_, idx) => (
+                      <Cell key={idx} fill={CATEGORY_COLORS[idx % CATEGORY_COLORS.length]} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
             ) : (
               <div className="h-32 flex items-center justify-center text-muted-foreground text-sm border border-dashed rounded-md">
                 No inventory data available
@@ -116,7 +124,7 @@ export default function Dashboard() {
             )}
           </CardContent>
           <div className="p-6 pt-0 mt-auto">
-             <Link href="/inventory">
+            <Link href="/inventory">
               <Button variant="outline" className="w-full" data-testid="link-view-inventory">
                 View Full Inventory
               </Button>
@@ -138,13 +146,13 @@ export default function Dashboard() {
             ) : recentRequests && recentRequests.length > 0 ? (
               <div className="space-y-4">
                 {recentRequests.map((req) => (
-                  <Link key={req.id} href={`/requests`}>
+                  <Link key={req.id} href={`/requests/${req.id}`}>
                     <div className="flex flex-col p-3 rounded-md border border-border/40 hover:border-primary/30 hover:bg-muted/50 transition-colors cursor-pointer group">
                       <div className="flex items-center justify-between mb-1">
                         <span className="font-semibold text-sm truncate pr-2 group-hover:text-primary transition-colors" data-testid={`recent-req-user-${req.id}`}>
                           {req.requestedBy}
                         </span>
-                        <Badge 
+                        <Badge
                           variant={
                             req.status === 'pending' ? 'secondary' :
                             req.status === 'approved' ? 'default' :
