@@ -16,8 +16,13 @@ def get_connection():
         st.error("DATABASE_URL is not configured. Add it to your Streamlit secrets.")
         st.stop()
 
+    db_url = db_url.strip().strip('"').strip("'")
+
     if db_url.startswith("postgres://"):
         db_url = db_url.replace("postgres://", "postgresql://", 1)
+
+    if "sslmode=" not in db_url:
+        db_url = db_url + ("&" if "?" in db_url else "?") + "sslmode=require"
 
     return psycopg2.connect(db_url, cursor_factory=psycopg2.extras.RealDictCursor)
 
