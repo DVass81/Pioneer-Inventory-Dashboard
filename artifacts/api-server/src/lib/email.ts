@@ -9,12 +9,12 @@ const PIONEER_RECIPIENTS = [
 ];
 
 function createTransporter() {
-  const host = process.env.SMTP_HOST;
+  const host = process.env.SMTP_HOST || "smtp.office365.com";
   const port = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT, 10) : 587;
   const user = process.env.SMTP_USER;
   const pass = process.env.SMTP_PASS;
 
-  if (!host || !user || !pass) {
+  if (!user || !pass) {
     logger.warn("SMTP not configured — emails will be logged only");
     return null;
   }
@@ -22,8 +22,9 @@ function createTransporter() {
   return nodemailer.createTransport({
     host,
     port,
-    secure: port === 465,
+    secure: false,
     auth: { user, pass },
+    tls: { ciphers: "SSLv3" },
   });
 }
 
