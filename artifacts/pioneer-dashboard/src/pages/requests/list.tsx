@@ -6,15 +6,26 @@ import { Link } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { PlusCircle, Search, Filter, CheckCircle, XCircle, PackageCheck, RotateCcw, ArrowRight } from "lucide-react";
+import { PlusCircle, Search, Filter, CheckCircle, XCircle, PackageCheck, RotateCcw, ArrowRight, CalendarDays } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useState, useMemo } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 function StatusActions({ id, status }: { id: number; status: string }) {
   const update = useUpdateRequestStatus();
   const { toast } = useToast();
+  const [confirmRejectId, setConfirmRejectId] = useState<number | null>(null);
 
   const handle = (newStatus: string) => {
     update.mutate({ id, status: newStatus as any }, {
@@ -25,46 +36,62 @@ function StatusActions({ id, status }: { id: number; status: string }) {
 
   const isPending = update.isPending;
 
-  if (status === "pending") {
-    return (
-      <div className="flex items-center gap-1">
-        <Button size="sm" variant="outline" className="h-7 text-xs gap-1 text-green-700 border-green-300 hover:bg-green-50" disabled={isPending} onClick={() => handle("approved")}>
-          <CheckCircle className="h-3 w-3" /> Approve
-        </Button>
-        <Button size="sm" variant="outline" className="h-7 text-xs gap-1 text-red-700 border-red-300 hover:bg-red-50" disabled={isPending} onClick={() => handle("rejected")}>
-          <XCircle className="h-3 w-3" /> Reject
-        </Button>
-      </div>
-    );
-  }
-
-  if (status === "approved") {
-    return (
-      <div className="flex items-center gap-1">
-        <Button size="sm" variant="outline" className="h-7 text-xs gap-1 text-blue-700 border-blue-300 hover:bg-blue-50" disabled={isPending} onClick={() => handle("completed")}>
-          <PackageCheck className="h-3 w-3" /> Complete
-        </Button>
+  return (
+    <>
+      {status === "pending" && (
+        <div className="flex items-center gap-1">
+          <Button size="sm" variant="outline" className="h-7 text-xs gap-1 text-green-700 border-green-300 hover:bg-green-50" disabled={isPending} onClick={() => handle("approved")}>
+            <CheckCircle className="h-3 w-3" /> Approve
+          </Button>
+          <Button size="sm" variant="outline" className="h-7 text-xs gap-1 text-red-700 border-red-300 hover:bg-red-50" disabled={isPending} onClick={() => setConfirmRejectId(id)}>
+            <XCircle className="h-3 w-3" /> Reject
+          </Button>
+        </div>
+      )}
+      {status === "approved" && (
+        <div className="flex items-center gap-1">
+          <Button size="sm" variant="outline" className="h-7 text-xs gap-1 text-blue-700 border-blue-300 hover:bg-blue-50" disabled={isPending} onClick={() => handle("completed")}>
+            <PackageCheck className="h-3 w-3" /> Complete
+          </Button>
+          <Button size="sm" variant="ghost" className="h-7 text-xs gap-1 text-muted-foreground" disabled={isPending} onClick={() => handle("pending")}>
+            <RotateCcw className="h-3 w-3" /> Undo
+          </Button>
+        </div>
+      )}
+      {status === "rejected" && (
         <Button size="sm" variant="ghost" className="h-7 text-xs gap-1 text-muted-foreground" disabled={isPending} onClick={() => handle("pending")}>
-          <RotateCcw className="h-3 w-3" /> Undo
+          <RotateCcw className="h-3 w-3" /> Reopen
         </Button>
-      </div>
-    );
-  }
+      )}
 
-  if (status === "rejected") {
-    return (
-      <Button size="sm" variant="ghost" className="h-7 text-xs gap-1 text-muted-foreground" disabled={isPending} onClick={() => handle("pending")}>
-        <RotateCcw className="h-3 w-3" /> Reopen
-      </Button>
-    );
-  }
-
-  return null;
+      <AlertDialog open={confirmRejectId !== null} onOpenChange={(open) => !open && setConfirmRejectId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reject this request?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will mark the request as rejected. No inventory will be affected. You can reopen it later if needed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => { handle("rejected"); setConfirmRejectId(null); }}
+            >
+              Yes, Reject
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
 }
 
 export default function RequestsList() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
 
   const { data: requests, isLoading } = useListReleaseRequests(
     statusFilter !== "all" ? { status: statusFilter as ListReleaseRequestsStatus } : undefined
@@ -72,14 +99,32 @@ export default function RequestsList() {
 
   const filteredRequests = useMemo(() => {
     if (!requests) return [];
-    if (!search.trim()) return requests;
-    const query = search.toLowerCase();
-    return requests.filter(req =>
-      req.requestedBy.toLowerCase().includes(query) ||
-      (req.inventoryItem?.product && req.inventoryItem.product.toLowerCase().includes(query)) ||
-      (req.notes && req.notes.toLowerCase().includes(query))
-    );
-  }, [requests, search]);
+    let result = requests;
+
+    if (search.trim()) {
+      const query = search.toLowerCase();
+      result = result.filter(req =>
+        req.requestedBy.toLowerCase().includes(query) ||
+        (req.inventoryItem?.product && req.inventoryItem.product.toLowerCase().includes(query)) ||
+        (req.notes && req.notes.toLowerCase().includes(query))
+      );
+    }
+
+    if (dateFrom) {
+      const from = new Date(dateFrom);
+      result = result.filter(req => new Date(req.createdAt) >= from);
+    }
+
+    if (dateTo) {
+      const to = new Date(dateTo);
+      to.setHours(23, 59, 59, 999);
+      result = result.filter(req => new Date(req.createdAt) <= to);
+    }
+
+    return result;
+  }, [requests, search, dateFrom, dateTo]);
+
+  const hasDateFilter = dateFrom || dateTo;
 
   return (
     <div className="space-y-6">
@@ -97,38 +142,67 @@ export default function RequestsList() {
 
       <Card className="shadow-sm">
         <CardHeader className="pb-4">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div>
-              <CardTitle>All Requests</CardTitle>
-              <CardDescription>History of all material release requests.</CardDescription>
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <CardTitle>All Requests</CardTitle>
+                <CardDescription>History of all material release requests.</CardDescription>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <div className="relative w-full sm:w-64">
+                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    type="search"
+                    placeholder="Search requester or product..."
+                    className="pl-8 bg-muted/50"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    data-testid="input-search-requests"
+                  />
+                </div>
+                <div className="w-full sm:w-40 flex items-center gap-2">
+                  <Filter className="w-4 h-4 text-muted-foreground shrink-0" />
+                  <Select value={statusFilter} onValueChange={setStatusFilter}>
+                    <SelectTrigger className="bg-muted/50" data-testid="select-status-filter">
+                      <SelectValue placeholder="Filter Status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Statuses</SelectItem>
+                      <SelectItem value="pending">Pending</SelectItem>
+                      <SelectItem value="approved">Approved</SelectItem>
+                      <SelectItem value="completed">Completed</SelectItem>
+                      <SelectItem value="rejected">Rejected</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
             </div>
-            <div className="flex flex-col sm:flex-row gap-3">
-              <div className="relative w-full sm:w-64">
-                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+
+            {/* Date range filter */}
+            <div className="flex flex-wrap items-center gap-3 pt-1 border-t border-border/40">
+              <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                <CalendarDays className="w-4 h-4" /> Date range:
+              </div>
+              <div className="flex items-center gap-2">
                 <Input
-                  type="search"
-                  placeholder="Search requester or product..."
-                  className="pl-8 bg-muted/50"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  data-testid="input-search-requests"
+                  type="date"
+                  className="h-8 w-36 text-sm bg-muted/50"
+                  value={dateFrom}
+                  onChange={(e) => setDateFrom(e.target.value)}
+                />
+                <span className="text-muted-foreground text-sm">to</span>
+                <Input
+                  type="date"
+                  className="h-8 w-36 text-sm bg-muted/50"
+                  value={dateTo}
+                  onChange={(e) => setDateTo(e.target.value)}
                 />
               </div>
-              <div className="w-full sm:w-40 flex items-center gap-2">
-                <Filter className="w-4 h-4 text-muted-foreground shrink-0" />
-                <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger className="bg-muted/50" data-testid="select-status-filter">
-                    <SelectValue placeholder="Filter Status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Statuses</SelectItem>
-                    <SelectItem value="pending">Pending</SelectItem>
-                    <SelectItem value="approved">Approved</SelectItem>
-                    <SelectItem value="completed">Completed</SelectItem>
-                    <SelectItem value="rejected">Rejected</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+              {hasDateFilter && (
+                <Button variant="ghost" size="sm" className="h-8 text-xs text-muted-foreground" onClick={() => { setDateFrom(""); setDateTo(""); }}>
+                  Clear dates
+                </Button>
+              )}
             </div>
           </div>
         </CardHeader>
@@ -156,6 +230,7 @@ export default function RequestsList() {
                       <TableCell><Skeleton className="h-5 w-16 ml-auto" /></TableCell>
                       <TableCell><Skeleton className="h-5 w-20" /></TableCell>
                       <TableCell><Skeleton className="h-5 w-28" /></TableCell>
+                      <TableCell></TableCell>
                     </TableRow>
                   ))
                 ) : filteredRequests.length > 0 ? (

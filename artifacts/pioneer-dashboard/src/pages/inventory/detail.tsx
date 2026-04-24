@@ -1,5 +1,6 @@
 import { useGetInventoryItem, getGetInventoryItemQueryKey } from "@workspace/api-client-react";
 import { useAdjustStock, useUpdateThreshold, useStockMovements } from "@workspace/api-client-react";
+import { InventoryItemDialog } from "@/components/inventory-item-dialog";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatCategory, formatDate } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -37,6 +38,9 @@ export default function InventoryDetail() {
 
   const adjustStock = useAdjustStock();
   const updateThreshold = useUpdateThreshold();
+
+  // Edit item dialog state
+  const [editOpen, setEditOpen] = useState(false);
 
   // Adjust stock dialog state
   const [adjustOpen, setAdjustOpen] = useState(false);
@@ -139,6 +143,9 @@ export default function InventoryDetail() {
           </div>
         </div>
         <div className="ml-auto flex items-center gap-2">
+          <Button variant="outline" onClick={() => setEditOpen(true)}>
+            <Edit2 className="w-4 h-4 mr-2" /> Edit Item
+          </Button>
           <Dialog open={adjustOpen} onOpenChange={setAdjustOpen}>
             <DialogTrigger asChild>
               <Button variant="outline">Adjust Stock</Button>
@@ -332,6 +339,15 @@ export default function InventoryDetail() {
           </CardContent>
         </Card>
       </div>
+
+      {item && (
+        <InventoryItemDialog
+          open={editOpen}
+          onOpenChange={setEditOpen}
+          mode="edit"
+          existingItem={item}
+        />
+      )}
     </div>
   );
 }

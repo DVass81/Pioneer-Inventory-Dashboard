@@ -109,6 +109,59 @@ router.get("/inventory/:id", async (req, res): Promise<void> => {
   }));
 });
 
+router.post("/inventory", async (req, res): Promise<void> => {
+  const { category, product, thickness, sheetSize, weightPerSheet, currentStock, unit, lowStockThreshold } = req.body;
+
+  if (!category || !product || !unit) {
+    res.status(400).json({ error: "category, product, and unit are required" });
+    return;
+  }
+
+  const [item] = await db.insert(inventoryItemsTable).values({
+    category,
+    product,
+    thickness: thickness || null,
+    sheetSize: sheetSize || null,
+    weightPerSheet: weightPerSheet ?? null,
+    currentStock: currentStock ?? 0,
+    unit,
+    lowStockThreshold: lowStockThreshold ?? null,
+  }).returning();
+
+  res.status(201).json({
+    ...item,
+    weightPerSheet: item.weightPerSheet != null ? parseFloat(item.weightPerSheet) : null,
+  });
+});
+
+router.patch("/inventory/:id", async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id, 10);
+  const { category, product, thickness, sheetSize, weightPerSheet, unit, lowStockThreshold } = req.body;
+
+  const [existing] = await db.select().from(inventoryItemsTable).where(eq(inventoryItemsTable.id, id));
+  if (!existing) {
+    res.status(404).json({ error: "Inventory item not found" });
+    return;
+  }
+
+  await db.update(inventoryItemsTable).set({
+    category: category ?? existing.category,
+    product: product ?? existing.product,
+    thickness: thickness !== undefined ? (thickness || null) : existing.thickness,
+    sheetSize: sheetSize !== undefined ? (sheetSize || null) : existing.sheetSize,
+    weightPerSheet: weightPerSheet !== undefined ? weightPerSheet : existing.weightPerSheet,
+    unit: unit ?? existing.unit,
+    lowStockThreshold: lowStockThreshold !== undefined ? lowStockThreshold : existing.lowStockThreshold,
+    updatedAt: new Date(),
+  }).where(eq(inventoryItemsTable.id, id));
+
+  const [updated] = await db.select().from(inventoryItemsTable).where(eq(inventoryItemsTable.id, id));
+  res.json({
+    ...updated,
+    weightPerSheet: updated.weightPerSheet != null ? parseFloat(updated.weightPerSheet) : null,
+  });
+});
+
 router.post("/inventory/:id/adjust", async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
   const { amount, notes } = req.body;

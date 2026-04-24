@@ -11,6 +11,7 @@ import InventoryDetail from "@/pages/inventory/detail";
 import RequestsList from "@/pages/requests/list";
 import NewRequest from "@/pages/requests/new";
 import RequestDetail from "@/pages/requests/detail";
+import Contact from "@/pages/contact";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient({
@@ -32,6 +33,7 @@ function Router() {
         <Route path="/requests" component={RequestsList} />
         <Route path="/requests/new" component={NewRequest} />
         <Route path="/requests/:id" component={RequestDetail} />
+        <Route path="/contact" component={Contact} />
         <Route component={NotFound} />
       </Switch>
     </Layout>

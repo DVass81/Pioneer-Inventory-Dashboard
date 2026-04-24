@@ -7,8 +7,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Link } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useState, useMemo } from "react";
-import { Search, AlertTriangle, ArrowRight, Download, Printer } from "lucide-react";
+import { Search, AlertTriangle, ArrowRight, Download, Printer, PlusCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { InventoryItemDialog } from "@/components/inventory-item-dialog";
 
 function handleExport() {
   const base = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
@@ -22,6 +23,7 @@ function handlePrint() {
 export default function InventoryList() {
   const { data: inventory, isLoading } = useListInventory();
   const [search, setSearch] = useState("");
+  const [addOpen, setAddOpen] = useState(false);
 
   const filteredInventory = useMemo(() => {
     if (!inventory) return [];
@@ -49,6 +51,9 @@ export default function InventoryList() {
           </Button>
           <Button variant="outline" size="sm" className="flex items-center gap-2" onClick={handleExport} data-testid="btn-export-csv">
             <Download className="w-4 h-4" /> Export CSV
+          </Button>
+          <Button size="sm" className="flex items-center gap-2" onClick={() => setAddOpen(true)}>
+            <PlusCircle className="w-4 h-4" /> Add Item
           </Button>
         </div>
       </div>
@@ -165,6 +170,8 @@ export default function InventoryList() {
           </div>
         </CardContent>
       </Card>
+
+      <InventoryItemDialog open={addOpen} onOpenChange={setAddOpen} mode="add" />
     </div>
   );
 }

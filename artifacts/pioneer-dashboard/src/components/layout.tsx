@@ -5,7 +5,8 @@ import {
   Package, 
   ClipboardList, 
   PlusCircle,
-  Menu
+  Menu,
+  Mail
 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,7 @@ export function Sidebar({ className }: SidebarProps) {
     { name: "Dashboard", href: "/", icon: LayoutDashboard },
     { name: "Inventory", href: "/inventory", icon: Package },
     { name: "Release Requests", href: "/requests", icon: ClipboardList },
+    { name: "Message Pioneer", href: "/contact", icon: Mail },
   ];
 
   return (

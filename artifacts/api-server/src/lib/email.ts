@@ -27,6 +27,39 @@ function createTransporter() {
   });
 }
 
+export async function sendComposeEmail(opts: {
+  fromName: string;
+  fromEmail: string;
+  subject: string;
+  message: string;
+}): Promise<void> {
+  const { fromName, fromEmail, subject, message } = opts;
+
+  const body = `From: ${fromName} <${fromEmail}>
+${message}
+
+---
+Sent via ICC International Inventory Dashboard`;
+
+  logger.info({ fromName, fromEmail, subject, recipients: PIONEER_RECIPIENTS }, "Compose email triggered");
+
+  const transporter = createTransporter();
+  if (!transporter) {
+    logger.info({ subject, body, to: PIONEER_RECIPIENTS.join(", ") }, "Email (not sent — SMTP not configured)");
+    return;
+  }
+
+  await transporter.sendMail({
+    from: `ICC International Inventory <${process.env.SMTP_USER}>`,
+    to: PIONEER_RECIPIENTS.join(", "),
+    replyTo: `${fromName} <${fromEmail}>`,
+    subject,
+    text: body,
+  });
+
+  logger.info({ recipients: PIONEER_RECIPIENTS }, "Compose email sent to Pioneer team");
+}
+
 export async function sendReleaseRequestEmail(opts: {
   requestedBy: string;
   requestedByEmail: string;

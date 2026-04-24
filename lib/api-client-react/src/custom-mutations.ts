@@ -6,7 +6,6 @@ export type RequestStatus = "pending" | "approved" | "completed" | "rejected";
 
 export function useUpdateRequestStatus() {
   const queryClient = useQueryClient();
-
   return useMutation({
     mutationFn: async ({ id, status }: { id: number; status: RequestStatus }) => {
       return customFetch(`/api/release-requests/${id}/status`, {
@@ -25,7 +24,6 @@ export function useUpdateRequestStatus() {
 
 export function useAdjustStock() {
   const queryClient = useQueryClient();
-
   return useMutation({
     mutationFn: async ({ id, amount, notes }: { id: number; amount: number; notes?: string }) => {
       return customFetch(`/api/inventory/${id}/adjust`, {
@@ -44,7 +42,6 @@ export function useAdjustStock() {
 
 export function useUpdateThreshold() {
   const queryClient = useQueryClient();
-
   return useMutation({
     mutationFn: async ({ id, threshold }: { id: number; threshold: number | null }) => {
       return customFetch(`/api/inventory/${id}/threshold`, {
@@ -77,5 +74,75 @@ export function useStockMovements(itemId: number) {
       }>;
     },
     enabled: !!itemId,
+  });
+}
+
+export function useAddInventoryItem() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: {
+      category: string;
+      product: string;
+      unit: string;
+      thickness?: string;
+      sheetSize?: string;
+      weightPerSheet?: number | null;
+      currentStock?: number;
+      lowStockThreshold?: number | null;
+    }) => {
+      return customFetch("/api/inventory", {
+        method: "POST",
+        body: JSON.stringify(data),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: getListInventoryQueryKey() });
+      queryClient.invalidateQueries({ queryKey: getGetInventorySummaryQueryKey() });
+    },
+  });
+}
+
+export function useEditInventoryItem() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, ...data }: {
+      id: number;
+      category?: string;
+      product?: string;
+      unit?: string;
+      thickness?: string;
+      sheetSize?: string;
+      weightPerSheet?: number | null;
+      lowStockThreshold?: number | null;
+    }) => {
+      return customFetch(`/api/inventory/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      });
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: getGetInventoryItemQueryKey(variables.id) });
+      queryClient.invalidateQueries({ queryKey: getListInventoryQueryKey() });
+      queryClient.invalidateQueries({ queryKey: getGetInventorySummaryQueryKey() });
+    },
+  });
+}
+
+export function useSendEmail() {
+  return useMutation({
+    mutationFn: async (data: { fromName: string; fromEmail: string; subject: string; message: string }) => {
+      return customFetch("/api/email/compose", {
+        method: "POST",
+        body: JSON.stringify(data),
+      });
+    },
+  });
+}
+
+export function useResendRequestEmail() {
+  return useMutation({
+    mutationFn: async (requestId: number) => {
+      return customFetch(`/api/email/resend/${requestId}`, { method: "POST" });
+    },
   });
 }
